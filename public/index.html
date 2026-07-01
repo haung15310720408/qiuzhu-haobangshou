@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DeepSeek BB Controller</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="app-header">
+        <div>
+          <p class="eyebrow">DeepSeek BB Controller</p>
+          <h1>招聘自动化工作台</h1>
+        </div>
+        <div class="header-actions">
+          <button id="statusBtn" type="button">检查浏览器</button>
+          <button id="closeTabsBtn" type="button">关闭标签</button>
+          <button id="resetBtn" type="button">新任务</button>
+        </div>
+      </header>
+
+      <section class="key-strip" aria-label="DeepSeek 设置">
+        <label>
+          <span>浏览器 API Key</span>
+          <input id="apiKey" type="password" autocomplete="off" placeholder="sk-..." />
+        </label>
+        <label>
+          <span>模型</span>
+          <input id="model" type="text" value="deepseek-chat" />
+        </label>
+        <label class="check">
+          <input id="rememberKey" type="checkbox" checked disabled />
+          <span>自动记住 Key</span>
+        </label>
+      </section>
+
+      <section class="status-strip" aria-label="运行状态">
+        <div class="status-tile">
+          <span>找企业</span>
+          <div id="industryStatus" class="status-line">未开始</div>
+        </div>
+        <div class="status-tile">
+          <span>数据库</span>
+          <div id="dbStatus" class="status-line">未检查</div>
+        </div>
+        <div class="status-tile">
+          <span>找岗位</span>
+          <div id="dbAgentStatus" class="status-line">未启动</div>
+        </div>
+        <div class="status-tile">
+          <span>筛选岗位</span>
+          <div id="jobScreenStatus" class="status-line">未启动</div>
+        </div>
+      </section>
+
+      <nav class="flow-grid" aria-label="工作区">
+        <button class="flow-card" type="button" data-open-view="findCompanies">
+          <span class="step">1</span>
+          <span>
+            <strong>找企业</strong>
+            <small id="statFindCompanies">行业政策 / 天眼查名单</small>
+          </span>
+        </button>
+        <button class="flow-card" type="button" data-open-view="findJobs">
+          <span class="step">2</span>
+          <span>
+            <strong>找岗位</strong>
+            <small id="statFindJobs">BOSS / 前程无忧搜索</small>
+          </span>
+        </button>
+        <button class="flow-card" type="button" data-open-view="screenJobs">
+          <span class="step">3</span>
+          <span>
+            <strong>筛选岗位</strong>
+            <small id="statScreenJobs">大模型批量筛选</small>
+          </span>
+        </button>
+        <button class="flow-card" type="button" data-open-view="results">
+          <span class="step">4</span>
+          <span>
+            <strong>看结果</strong>
+            <small id="statResults">合适岗位列表</small>
+          </span>
+        </button>
+        <button class="flow-card" type="button" data-open-view="database">
+          <span class="step">5</span>
+          <span>
+            <strong>数据库</strong>
+            <small id="statDownloads">导入与下载</small>
+          </span>
+        </button>
+        <button class="flow-card" type="button" data-open-view="browser">
+          <span class="step">6</span>
+          <span>
+            <strong>浏览器指令</strong>
+            <small>DeepSeek 操控 Chrome</small>
+          </span>
+        </button>
+        <button class="flow-card" type="button" data-open-view="companyRisk">
+          <span class="step">7</span>
+          <span>
+            <strong>企业背调</strong>
+            <small>天眼查报告求职风险</small>
+          </span>
+        </button>
+      </nav>
+
+      <section class="view-stack">
+        <section class="view-panel" data-view-panel="findCompanies">
+          <div class="section-head">
+            <div>
+              <h2>1. 找企业</h2>
+              <p>先提取地区重点行业，再用天眼查高级搜索筛企业名单</p>
+            </div>
+            <button type="button" data-open-view="findJobs">去找岗位</button>
+          </div>
+
+          <div class="panel-grid">
+            <div class="control-panel wide">
+              <label>
+                <span>国家或地区</span>
+                <input id="industryRegion" type="text" placeholder="例如：上海 / 加拿大 / 新加坡" />
+              </label>
+              <label>
+                <span>豆包模型</span>
+                <input id="industryArkModel" type="text" value="doubao-seed-2-1-turbo-260628" />
+              </label>
+              <label>
+                <span>Ark API Key</span>
+                <input id="industryArkKey" type="password" autocomplete="off" placeholder="ark-..." />
+              </label>
+              <label>
+                <span>天眼查执行模型</span>
+                <input id="industryBrowserModel" type="text" value="deepseek-chat" />
+              </label>
+              <label>
+                <span>用户信息或要求</span>
+                <textarea id="industryUserInfo" rows="5" placeholder="用户背景、目标行业、学历、工作经验、希望发展的地区等"></textarea>
+              </label>
+              <label>
+                <span>简历文本</span>
+                <textarea id="industryResumeText" rows="5" placeholder="可粘贴简历正文；图片简历可直接上传"></textarea>
+              </label>
+              <label>
+                <span>图片/文本附件</span>
+                <input id="industryFiles" type="file" multiple accept="image/*,.txt,.md,.json,.csv" />
+              </label>
+              <label>
+                <span>天眼查会话 ID</span>
+                <input id="industrySessionId" type="text" value="tyc-industry-search" />
+              </label>
+            </div>
+
+            <div class="control-panel">
+              <div id="industryRunStatus" class="status-line">等待行业提取</div>
+              <button id="industryAnalyzeBtn" class="primary" type="button">提取支持行业</button>
+              <button id="industryPreviewBtn" type="button">预览天眼查任务</button>
+              <button id="industryRunTycBtn" class="primary" type="button">执行天眼查并导入</button>
+              <button id="industryClearBtn" type="button">清空行业结果</button>
+              <div id="industryLog" class="mini-log"></div>
+            </div>
+          </div>
+
+          <div id="industryResults" class="result-list"></div>
+        </section>
+
+        <section class="view-panel" data-view-panel="findJobs">
+          <div class="section-head">
+            <div>
+              <h2>2. 找岗位</h2>
+              <p>BOSS 与前程无忧岗位通道</p>
+            </div>
+            <button type="button" data-open-view="database">企业名单</button>
+          </div>
+
+          <div class="subsection-title">BOSS 直聘</div>
+          <div class="panel-grid">
+            <div class="control-panel wide">
+              <label>
+                <span>DeepSeek API Key（可空）</span>
+                <input id="dbAgentApiKey" type="password" autocomplete="off" placeholder="sk-..." />
+              </label>
+              <label>
+                <span>通道模型</span>
+                <input id="dbAgentModel" type="text" value="deepseek-chat" />
+              </label>
+              <label>
+                <span>每次处理企业数</span>
+                <input id="dbAgentMax" type="number" min="1" max="100" value="5" />
+              </label>
+              <label>
+                <span>处理队列</span>
+                <select id="dbAgentStatusSelect">
+                  <option value="new">待处理企业</option>
+                  <option value="error">错误企业</option>
+                </select>
+              </label>
+              <label>
+                <span>每家搜索间隔（秒）</span>
+                <div class="inline-fields">
+                  <input id="dbAgentCompanyDelayMin" type="number" min="0" max="120" value="8" placeholder="最小" />
+                  <input id="dbAgentCompanyDelayMax" type="number" min="0" max="120" value="15" placeholder="最大" />
+                </div>
+              </label>
+              <label>
+                <span>每个动作间隔（秒）</span>
+                <div class="inline-fields">
+                  <input id="dbAgentActionDelayMin" type="number" min="0" max="30" value="1" placeholder="最小" />
+                  <input id="dbAgentActionDelayMax" type="number" min="0" max="30" value="3" placeholder="最大" />
+                </div>
+              </label>
+              <label>
+                <span>BOSS 城市代码</span>
+                <input id="dbAgentCity" type="text" placeholder="例如 101040100" />
+              </label>
+              <label class="check">
+                <input id="rememberDbAgentKey" type="checkbox" checked disabled />
+                <span>自动记住通道 Key</span>
+              </label>
+            </div>
+
+            <div class="control-panel">
+              <button id="dbAgentOpenBossBtn" type="button">打开 GeekRun 登录页</button>
+              <button id="dbAgentCloseGeekrunBtn" type="button">关闭 GeekRun 浏览器</button>
+              <button id="dbAgentRequeueErrorBtn" type="button">重置错误为待处理</button>
+              <button id="dbAgentStartBtn" class="primary" type="button">开始批量搜索</button>
+              <button id="dbAgentStopBtn" class="danger" type="button">暂停 GeekRun 通道</button>
+              <div id="dbAgentLog" class="mini-log"></div>
+            </div>
+          </div>
+
+          <div class="subsection-title">前程无忧</div>
+          <div class="panel-grid">
+            <div class="control-panel wide">
+              <label>
+                <span>每次处理企业数</span>
+                <input id="job51AgentMax" type="number" min="1" max="100" value="5" />
+              </label>
+              <label>
+                <span>处理队列</span>
+                <select id="job51AgentStatusSelect">
+                  <option value="__boss_done__">BOSS 已处理企业</option>
+                  <option value="__all_searchable__">全部可搜索企业</option>
+                  <option value="new">待处理企业</option>
+                  <option value="no_recent_jobs">无近期岗位企业</option>
+                  <option value="actively_hiring">已找到岗位企业</option>
+                  <option value="error">错误企业</option>
+                </select>
+              </label>
+              <label>
+                <span>每家搜索间隔（秒）</span>
+                <div class="inline-fields">
+                  <input id="job51AgentCompanyDelayMin" type="number" min="0" max="120" value="8" placeholder="最小" />
+                  <input id="job51AgentCompanyDelayMax" type="number" min="0" max="120" value="15" placeholder="最大" />
+                </div>
+              </label>
+              <label>
+                <span>每个动作间隔（秒）</span>
+                <div class="inline-fields">
+                  <input id="job51AgentActionDelayMin" type="number" min="0" max="30" value="1" placeholder="最小" />
+                  <input id="job51AgentActionDelayMax" type="number" min="0" max="30" value="3" placeholder="最大" />
+                </div>
+              </label>
+              <label>
+                <span>前程无忧地区代码</span>
+                <input id="job51AgentArea" type="text" value="000000" placeholder="000000 为全国" />
+              </label>
+            </div>
+
+            <div class="control-panel">
+              <div id="job51AgentStatus" class="status-line">未启动</div>
+              <button id="job51AgentOpenBtn" type="button">打开前程无忧个人中心</button>
+              <button id="job51AgentCloseBtn" type="button">关闭前程无忧浏览器</button>
+              <button id="job51AgentStartBtn" class="primary" type="button">开始前程无忧搜索</button>
+              <button id="job51AgentStopBtn" class="danger" type="button">暂停前程无忧通道</button>
+              <div id="job51AgentLog" class="mini-log"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="view-panel" data-view-panel="screenJobs">
+          <div class="section-head">
+            <div>
+              <h2>3. 筛选岗位</h2>
+              <p>搜索后岗位库</p>
+            </div>
+            <button type="button" data-open-view="results">查看结果</button>
+          </div>
+
+          <div class="panel-grid">
+            <div class="control-panel wide">
+              <label>
+                <span>筛选 API Key</span>
+                <input id="jobScreenApiKey" type="password" autocomplete="off" placeholder="sk-..." />
+              </label>
+              <label>
+                <span>筛选模型</span>
+                <input id="jobScreenModel" type="text" value="deepseek-chat" />
+              </label>
+              <label>
+                <span>每批岗位数</span>
+                <input id="jobScreenBatchSize" type="number" min="1" max="100" value="100" />
+              </label>
+              <label>
+                <span>筛选要求</span>
+                <textarea id="jobScreenInstruction" rows="5" placeholder="例如：机械/自动化/电气方向，重庆地区，应届或1-3年经验优先；销售岗和纯普工不要。"></textarea>
+              </label>
+              <label class="check">
+                <input id="rememberJobScreenKey" type="checkbox" checked disabled />
+                <span>自动记住筛选 Key</span>
+              </label>
+              <label class="check">
+                <input id="jobScreenRescreenAll" type="checkbox" checked />
+                <span>按当前要求重新筛选所有岗位</span>
+              </label>
+            </div>
+
+            <div class="control-panel">
+              <button id="jobScreenStartBtn" class="primary" type="button">开始筛选岗位</button>
+              <button id="jobScreenStopBtn" class="danger" type="button">暂停岗位筛选</button>
+              <button id="jobScreenResetBtn" type="button">重置岗位筛选状态</button>
+              <div id="jobScreenLog" class="mini-log"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="view-panel" data-view-panel="results">
+          <div class="section-head">
+            <div>
+              <h2>4. 看结果</h2>
+              <p>大模型筛选回填结果</p>
+            </div>
+            <div class="header-actions">
+              <button id="jobResultsRefreshBtn" type="button">刷新结果</button>
+              <button id="jobResultsClearBtn" class="danger" type="button">清空筛选结果</button>
+            </div>
+          </div>
+
+          <div class="result-toolbar">
+            <label>
+              <span>结果类型</span>
+              <select id="jobResultsStatus">
+                <option value="screened">已筛选结果</option>
+                <option value="all">全部岗位</option>
+                <option value="suitable">合适</option>
+                <option value="maybe">可考虑</option>
+                <option value="not_suitable">不合适</option>
+                <option value="error">筛选错误</option>
+                <option value="pending">待筛选</option>
+              </select>
+            </label>
+            <label>
+              <span>关键词</span>
+              <input id="jobResultsQuery" type="search" placeholder="公司、岗位、城市" />
+            </label>
+            <label>
+              <span>显示数量</span>
+              <input id="jobResultsLimit" type="number" min="1" max="200" value="50" />
+            </label>
+          </div>
+
+          <div id="jobResultsSummary" class="status-line">未加载</div>
+          <div id="jobResultsList" class="result-list"></div>
+        </section>
+
+        <section class="view-panel" data-view-panel="database">
+          <div class="section-head">
+            <div>
+              <h2>5. 数据库</h2>
+              <p>企业名单与下载文件</p>
+            </div>
+            <button id="dbStatusBtn" type="button">检查数据库</button>
+          </div>
+
+          <div class="panel-grid">
+            <div class="control-panel">
+              <button id="dbInitBtn" type="button">初始化数据库</button>
+              <label>
+                <span>导入企业名单</span>
+                <input id="companyFile" type="file" accept=".csv,.tsv,.txt,.xlsx,.xlsm" />
+              </label>
+              <button id="importCompaniesBtn" class="primary" type="button">导入企业</button>
+            </div>
+            <div class="control-panel">
+              <button id="scanDownloadsBtn" type="button">扫描下载目录</button>
+              <button id="processNextBtn" type="button">处理下一家企业</button>
+              <label class="check">
+                <input id="autoIngest" type="checkbox" />
+                <span>自动入库下载文件</span>
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <section class="view-panel" data-view-panel="browser">
+          <div class="section-head">
+            <div>
+              <h2>6. 浏览器指令</h2>
+              <p>DeepSeek 操控 Chrome</p>
+            </div>
+          </div>
+
+          <div class="tips">
+            <button class="example" type="button">打开 GitHub，搜索 bb-browser</button>
+            <button class="example" type="button">查看当前页面标题和 URL</button>
+            <button class="example" type="button">用 arXiv 搜索 AI agent，给我 5 条结果</button>
+            <button class="example" type="button">打开百度，搜索 DeepSeek API</button>
+          </div>
+
+          <section class="workspace">
+            <div id="messages" class="messages"></div>
+            <form id="composer" class="composer">
+              <textarea id="prompt" rows="3" placeholder="输入你想让 DeepSeek 操控浏览器做什么..."></textarea>
+              <div class="composer-actions">
+                <button id="sendBtn" class="primary" type="submit">发送</button>
+                <button id="cancelBtn" class="danger" type="button" disabled>暂停执行</button>
+              </div>
+            </form>
+          </section>
+        </section>
+
+        <section class="view-panel" data-view-panel="companyRisk">
+          <div class="section-head">
+            <div>
+              <h2>7. 企业背调</h2>
+              <p>下载天眼查报告后分析求职风险</p>
+            </div>
+          </div>
+
+          <div class="panel-grid">
+            <div class="control-panel">
+              <label>
+                <span>公司名称</span>
+                <input id="riskCompanyName" type="text" placeholder="例如：某某科技有限公司" />
+              </label>
+              <label>
+                <span>求职职位</span>
+                <input id="riskJobTitle" type="text" placeholder="例如：后端开发工程师" />
+              </label>
+              <button id="riskDownloadBtn" class="primary" type="button">下载报告并分析</button>
+              <button id="riskAnalyzeBtn" type="button">只分析最近报告</button>
+              <div id="riskStatus" class="status-line">等待开始</div>
+              <div id="riskLog" class="mini-log"></div>
+            </div>
+            <div class="control-panel">
+              <div class="subsection-title">任务窗口</div>
+              <div class="window-actions">
+                <button id="riskAddWindowBtn" type="button">新增窗口</button>
+                <button id="riskDeleteWindowBtn" class="danger" type="button">删除窗口</button>
+              </div>
+              <div id="riskWindowList" class="window-list"></div>
+            </div>
+          </div>
+
+          <div id="riskResult" class="risk-result"></div>
+        </section>
+
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

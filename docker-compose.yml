@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: deepseek-bb-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: deepseek_bb
+      POSTGRES_USER: deepseek
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-deepseek_bb_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - deepseek_bb_pgdata:/var/lib/postgresql/data
+
+volumes:
+  deepseek_bb_pgdata:
