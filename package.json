@@ -1,5 +1,6 @@
 {
-  "name": "deepseek-bb-controller",
+  "name": "qiuzhu-haobangshou",
+  "description": "本地招聘自动化工作台：企业搜索、岗位筛选、下载入库和求职风险背调。",
   "version": "0.1.0",
   "private": true,
   "type": "module",
