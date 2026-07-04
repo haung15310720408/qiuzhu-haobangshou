@@ -2,7 +2,8 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 
-const GEEKRUN_DIR = process.env.GEEKRUN_DIR || path.join(process.cwd(), "vendor", "geekrun");
+const BUNDLED_GEEKRUN_DIR = path.join(process.cwd(), "vendor", "geekrun");
+const GEEKRUN_DIR = process.env.GEEKRUN_DIR || BUNDLED_GEEKRUN_DIR;
 const geekRequire = createRequire(path.join(GEEKRUN_DIR, "package.json"));
 
 function parseArgs(argv) {

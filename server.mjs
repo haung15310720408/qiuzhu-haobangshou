@@ -22,7 +22,8 @@ const PYTHON = process.env.PYTHON || "python3";
 const DATABASE_URL = process.env.DATABASE_URL || "postgres://deepseek:deepseek_bb_password@127.0.0.1:5432/deepseek_bb";
 const GEEKRUN_SEARCH_SCRIPT = process.env.GEEKRUN_SEARCH_SCRIPT || path.join(__dirname, "geekrun_search_jobs.mjs");
 const JOB51_SEARCH_SCRIPT = process.env.JOB51_SEARCH_SCRIPT || path.join(__dirname, "job51_search_jobs.mjs");
-const GEEKRUN_DIR = process.env.GEEKRUN_DIR || path.join(__dirname, "vendor", "geekrun");
+const BUNDLED_GEEKRUN_DIR = path.join(__dirname, "vendor", "geekrun");
+const GEEKRUN_DIR = process.env.GEEKRUN_DIR || BUNDLED_GEEKRUN_DIR;
 const GEEKRUN_PROFILE_DIR = process.env.GEEKRUN_USER_DATA_DIR || path.join(HOME_DIR, ".geekgeekrun", "chrome-profile");
 const JOB51_PROFILE_DIR = process.env.JOB51_USER_DATA_DIR || path.join(HOME_DIR, ".geekgeekrun", "chrome-profile-51job");
 const DOWNLOADS_DIR = process.env.DOWNLOADS_DIR || path.join(HOME_DIR, "Downloads");
@@ -905,8 +906,16 @@ function pickField(row, candidates) {
   return "";
 }
 
+function pickFirstColumn(row) {
+  for (const key of Object.keys(row || {})) {
+    const value = String(row[key] ?? "").trim();
+    if (value) return value;
+  }
+  return "";
+}
+
 function mapCompanyRow(row) {
-  const name = pickField(row, ["企业名称", "公司名称", "单位名称", "企业", "公司", "名称", "name", "company", "companyname"]);
+  const name = pickField(row, ["企业名称", "公司名称", "单位名称", "企业", "公司", "名称", "name", "company", "companyname"]) || pickFirstColumn(row);
   if (!name) return null;
   return {
     name,
@@ -1980,6 +1989,36 @@ async function callDeepSeekJson({ apiKey, model, messages }) {
   }
 }
 
+async function callDeepSeekText({ apiKey, model, messages, temperature = 0.2, maxTokens = 6000 }) {
+  const response = await fetchDeepSeek({
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${apiKey}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model: model || DEFAULT_MODEL,
+      messages,
+      temperature,
+      max_tokens: maxTokens,
+    }),
+  });
+
+  const text = await response.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(`DeepSeek returned non-JSON (${response.status}): ${text.slice(0, 500)}`);
+  }
+  if (!response.ok) {
+    throw new Error(data?.error?.message || `DeepSeek API error: ${response.status}`);
+  }
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) throw new Error("DeepSeek 没有返回报告内容");
+  return { content, raw: data };
+}
+
 async function validateDeepSeekKey({ apiKey, model }) {
   const data = await callDeepSeek({
     apiKey,
@@ -2141,6 +2180,13 @@ async function bossSearchCompanies(companies, options = {}) {
 }
 
 async function openBossLoginPage() {
+  if (!existsSync(path.join(GEEKRUN_DIR, "package.json"))) {
+    return {
+      ok: false,
+      output: `找不到 GeekRun 项目目录：${GEEKRUN_DIR}`,
+      command: `node ${GEEKRUN_SEARCH_SCRIPT} --open-login`,
+    };
+  }
   const child = spawn(
     NODE,
     [GEEKRUN_SEARCH_SCRIPT, "--open-login"],
@@ -3416,6 +3462,238 @@ ${String(reportText || "").slice(0, 90000)}
   ];
 }
 
+function decodeUploadedDataUrl(dataUrl) {
+  const value = String(dataUrl || "");
+  const match = value.match(/^data:([^;,]+)?(;base64)?,([\s\S]*)$/);
+  if (!match) return null;
+  const payload = match[3] || "";
+  return match[2] ? Buffer.from(payload, "base64") : Buffer.from(decodeURIComponent(payload), "utf8");
+}
+
+function runExtractCommand(command, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    execFile(command, args, {
+      timeout: options.timeout || 30000,
+      maxBuffer: options.maxBuffer || 20 * 1024 * 1024,
+    }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error(String(stderr || error.message || error).trim()));
+        return;
+      }
+      resolve(String(stdout || ""));
+    });
+  });
+}
+
+async function extractUploadedText(file) {
+  const name = String(file?.name || "未命名文件");
+  const type = String(file?.type || "");
+  const ext = path.extname(name).toLowerCase();
+  if (file?.text) {
+    return { name, text: String(file.text).slice(0, 80000), status: "text_extracted" };
+  }
+
+  const buffer = decodeUploadedDataUrl(file?.dataUrl);
+  if (!buffer?.length) {
+    return { name, text: "", status: "not_extracted", note: "未收到可读取的文件内容" };
+  }
+  if (buffer.length > 12 * 1024 * 1024) {
+    return { name, text: "", status: "not_extracted", note: "文件超过 12MB，未读取正文" };
+  }
+
+  if (type.startsWith("text/") || [".txt", ".md", ".json", ".csv", ".tsv", ".rtf"].includes(ext)) {
+    return { name, text: buffer.toString("utf8").slice(0, 80000), status: "text_extracted" };
+  }
+
+  await mkdir(UPLOADS_DIR, { recursive: true });
+  const tempPath = path.join(UPLOADS_DIR, `${randomUUID()}-${safeName(name)}`);
+  await writeFile(tempPath, buffer);
+  try {
+    if (ext === ".pdf") {
+      try {
+        const text = await runExtractCommand("pdftotext", ["-layout", "-q", tempPath, "-"]);
+        return { name, text: text.slice(0, 80000), status: text.trim() ? "text_extracted" : "not_extracted", note: text.trim() ? "" : "PDF 没有抽取到正文" };
+      } catch (error) {
+        return { name, text: "", status: "not_extracted", note: `PDF 正文抽取失败：${error.message || String(error)}` };
+      }
+    }
+
+    if ([".doc", ".docx"].includes(ext)) {
+      try {
+        const text = await runExtractCommand("textutil", ["-convert", "txt", "-stdout", tempPath]);
+        return { name, text: text.slice(0, 80000), status: text.trim() ? "text_extracted" : "not_extracted", note: text.trim() ? "" : "Word 文件没有抽取到正文" };
+      } catch (error) {
+        return { name, text: "", status: "not_extracted", note: `Word 正文抽取失败：${error.message || String(error)}` };
+      }
+    }
+
+    return { name, text: "", status: "not_extracted", note: `暂不支持读取 ${ext || type || "该类型"} 文件正文` };
+  } finally {
+    await unlink(tempPath).catch(() => {});
+  }
+}
+
+async function prepareInterviewReportInput({ resumeText, jobText, resumeFiles = [], jobFiles = [] }) {
+  const resumeParts = [];
+  const jobParts = [];
+  const fileNotes = [];
+
+  if (String(resumeText || "").trim()) resumeParts.push(`【粘贴的简历内容】\n${String(resumeText).trim()}`);
+  if (String(jobText || "").trim()) jobParts.push(`【粘贴的目标岗位信息】\n${String(jobText).trim()}`);
+
+  for (const file of Array.isArray(resumeFiles) ? resumeFiles : []) {
+    const extracted = await extractUploadedText(file);
+    fileNotes.push({ area: "resume", name: extracted.name, status: extracted.status, note: extracted.note || "" });
+    if (extracted.text) resumeParts.push(`【简历文件：${extracted.name}】\n${extracted.text}`);
+  }
+
+  for (const file of Array.isArray(jobFiles) ? jobFiles : []) {
+    const extracted = await extractUploadedText(file);
+    fileNotes.push({ area: "job", name: extracted.name, status: extracted.status, note: extracted.note || "" });
+    if (extracted.text) jobParts.push(`【岗位文件：${extracted.name}】\n${extracted.text}`);
+  }
+
+  return {
+    resumeContent: resumeParts.join("\n\n").slice(0, 100000),
+    jobContent: jobParts.join("\n\n").slice(0, 70000),
+    fileNotes,
+  };
+}
+
+function buildInterviewReportMessages({ resumeContent, jobContent, extraInfo }) {
+  return [
+    {
+      role: "system",
+      content: `你是一名资深求职面试辅导师、岗位分析师和简历优化顾问。
+
+你的任务是根据求职者上传的简历内容和目标岗位信息，生成一份《目标岗位面试通过策略报告》。报告要帮助求职者理解岗位、判断匹配度、准备面试，并修改简历。
+
+必须严格基于用户提供的简历和岗位信息分析，不要编造求职者没有提供的经历、项目、技能、证书、学历、公司、奖项或成果。如果岗位信息或简历信息不足，要在报告中明确说明不确定性。`,
+    },
+    {
+      role: "user",
+      content: `【求职者简历】
+${resumeContent || "未提供"}
+
+【目标岗位信息】
+${jobContent || "未提供"}
+
+【补充信息】
+${String(extraInfo || "").trim() || "未提供"}
+
+请输出一份正式中文报告，必须使用以下结构：
+
+《目标岗位面试通过策略报告》
+
+一、岗位解读
+1. 岗位本质判断
+说明这个岗位本质上在招什么样的人。
+2. 核心职责拆解
+逐条拆解岗位主要工作内容。
+3. 核心能力要求
+说明岗位最看重的硬技能、软技能、项目经验和业务理解能力。
+4. 面试重点预测
+预测面试官最可能重点考察的问题方向。
+
+二、简历能力解析
+1. 求职者核心优势
+结合简历原文，说明求职者有哪些优势。
+2. 可迁移能力
+说明哪些经历虽然不是完全对应岗位，但可以转化成岗位需要的能力。
+3. 当前短板与风险
+指出简历中可能被面试官质疑的地方，以及原因。
+
+三、岗位匹配度评估
+1. 综合匹配评分
+给出 0-100 分，并说明评分理由。
+2. 高匹配点
+列出简历与岗位高度匹配的地方。
+3. 中等匹配点
+列出已有基础但需要加强表达的地方。
+4. 低匹配或缺失点
+列出明显不足、缺失或风险点。
+5. 投递建议
+给出：强烈建议投递 / 可以投递 / 谨慎投递 / 不建议投递。
+
+四、面试通过策略
+1. 一分钟自我介绍建议
+围绕目标岗位，写一版适合面试开场使用的自我介绍。
+2. 重点项目表达策略
+告诉求职者应该重点讲哪些项目、怎么讲、突出什么能力。
+3. 高频面试问题与回答思路
+至少列出 8 个可能被问到的问题，并给出回答要点。
+4. 风险问题应对
+针对简历短板，设计面试官可能追问的问题，并给出回答策略。
+5. 反问面试官的问题
+给出 3-5 个适合该岗位的反问问题。
+
+五、简历修改建议
+1. 简历整体修改方向
+说明简历应该往哪个方向优化，才能更贴合目标岗位。
+2. 关键词优化建议
+列出应该强化或补充的岗位关键词。
+3. 模块修改建议
+分别从个人 summary、技能栈、项目经历、工作经历、教育背景等角度提出建议。
+4. 简历项目经历改写示例
+基于简历已有内容，给出若干条优化后的项目描述。不得编造不存在的经历。
+
+六、7 天准备计划
+按天输出第 1 天到第 7 天的准备任务，每天必须具体可执行。
+
+七、最终结论
+用一段话总结：这位求职者是否适合投递该岗位；当前最大优势是什么；最大风险是什么；最应该优先修改或准备什么。
+
+输出要求：
+1. 必须使用中文。
+2. 必须是正式报告形式。
+3. 不要输出 JSON。
+4. 不要使用 Markdown 表格。
+5. 不要编造简历中没有的经历。
+6. 建议必须具体、可执行，不能只写空泛建议。`,
+    },
+  ];
+}
+
+async function handleInterviewReport(req, res) {
+  try {
+    const body = await readJson(req);
+    const apiKey = String(body.apiKey || "").trim();
+    const model = String(body.model || DEFAULT_MODEL).trim();
+    if (!apiKey) return json(res, 400, { error: "请填写浏览器 API Key" });
+
+    const prepared = await prepareInterviewReportInput({
+      resumeText: body.resumeText,
+      jobText: body.jobText,
+      resumeFiles: body.resumeFiles,
+      jobFiles: body.jobFiles,
+    });
+
+    if (!prepared.resumeContent.trim()) return json(res, 400, { error: "请粘贴或上传简历内容" });
+    if (!prepared.jobContent.trim()) return json(res, 400, { error: "请粘贴或上传目标岗位信息" });
+
+    const result = await callDeepSeekText({
+      apiKey,
+      model,
+      messages: buildInterviewReportMessages({
+        resumeContent: prepared.resumeContent,
+        jobContent: prepared.jobContent,
+        extraInfo: body.extraInfo,
+      }),
+      temperature: 0.2,
+      maxTokens: 7000,
+    });
+
+    return json(res, 200, {
+      ok: true,
+      report: result.content,
+      fileNotes: prepared.fileNotes,
+      usage: result.raw?.usage || null,
+    });
+  } catch (error) {
+    json(res, 500, { error: error.message || String(error) });
+  }
+}
+
 async function handleCompanyRisk(req, res) {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
@@ -3715,6 +3993,7 @@ const server = createServer(async (req, res) => {
   if (req.url.startsWith("/api/job51-agent/")) return handleJob51Agent(req, res);
   if (req.url.startsWith("/api/job-screen/")) return handleJobScreen(req, res);
   if (req.url.startsWith("/api/company-risk/")) return handleCompanyRisk(req, res);
+  if (req.method === "POST" && req.url === "/api/interview-report/analyze") return handleInterviewReport(req, res);
   if (req.method === "POST" && req.url === "/api/industry/analyze") return handleIndustryAnalyze(req, res);
   if (req.method === "POST" && req.url === "/api/industry/tyc-run") return handleIndustryTycRun(req, res);
   if (req.method === "POST" && req.url === "/api/import-companies") return handleImportCompanies(req, res);

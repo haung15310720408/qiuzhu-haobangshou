@@ -28,6 +28,9 @@ const dbStatusBtn = document.querySelector("#dbStatusBtn");
 const dbInitBtn = document.querySelector("#dbInitBtn");
 const companyFileInput = document.querySelector("#companyFile");
 const importCompaniesBtn = document.querySelector("#importCompaniesBtn");
+const findJobsCompanyFileInput = document.querySelector("#findJobsCompanyFile");
+const findJobsImportCompaniesBtn = document.querySelector("#findJobsImportCompaniesBtn");
+const findJobsImportStatusEl = document.querySelector("#findJobsImportStatus");
 const scanDownloadsBtn = document.querySelector("#scanDownloadsBtn");
 const processNextBtn = document.querySelector("#processNextBtn");
 const autoIngestInput = document.querySelector("#autoIngest");
@@ -96,6 +99,17 @@ const riskResultEl = document.querySelector("#riskResult");
 const riskAddWindowBtn = document.querySelector("#riskAddWindowBtn");
 const riskDeleteWindowBtn = document.querySelector("#riskDeleteWindowBtn");
 const riskWindowListEl = document.querySelector("#riskWindowList");
+const interviewResumeTextInput = document.querySelector("#interviewResumeText");
+const interviewJobTextInput = document.querySelector("#interviewJobText");
+const interviewResumeFilesInput = document.querySelector("#interviewResumeFiles");
+const interviewJobFilesInput = document.querySelector("#interviewJobFiles");
+const interviewExtraInfoInput = document.querySelector("#interviewExtraInfo");
+const interviewModelInput = document.querySelector("#interviewModel");
+const interviewAnalyzeBtn = document.querySelector("#interviewAnalyzeBtn");
+const interviewClearBtn = document.querySelector("#interviewClearBtn");
+const interviewStatusEl = document.querySelector("#interviewStatus");
+const interviewFileNotesEl = document.querySelector("#interviewFileNotes");
+const interviewReportResultEl = document.querySelector("#interviewReportResult");
 const composer = document.querySelector("#composer");
 const messages = document.querySelector("#messages");
 
@@ -135,7 +149,8 @@ function boot() {
   industryUserInfoInput.value = localStorage.getItem("deepseek-industry-user-info") || "";
   industryResumeTextInput.value = localStorage.getItem("deepseek-industry-resume-text") || "";
   industrySessionIdInput.value = localStorage.getItem("deepseek-industry-session-id") || "tyc-industry-search";
-  job51AgentMaxInput.value = localStorage.getItem("deepseek-job51-agent-max") || "5";
+  const savedJob51Max = localStorage.getItem("deepseek-job51-agent-max");
+  job51AgentMaxInput.value = !savedJob51Max || savedJob51Max === "5" ? "50" : savedJob51Max;
   job51AgentStatusSelect.value = localStorage.getItem("deepseek-job51-agent-status-v2") || "__boss_done__";
   job51AgentCompanyDelayMinInput.value = localStorage.getItem("deepseek-job51-agent-company-delay-min") || "8";
   job51AgentCompanyDelayMaxInput.value = localStorage.getItem("deepseek-job51-agent-company-delay-max") || "15";
@@ -146,6 +161,11 @@ function boot() {
   jobScreenInstructionInput.value = localStorage.getItem("deepseek-job-screen-instruction") || "";
   jobScreenRescreenAllInput.checked = localStorage.getItem("deepseek-job-screen-rescreen-all") !== "false";
   jobResultsStatusInput.value = localStorage.getItem("deepseek-job-results-status") || "screened";
+  interviewModelInput.value = localStorage.getItem("deepseek-interview-model") || savedModel || "deepseek-chat";
+  interviewResumeTextInput.value = localStorage.getItem("deepseek-interview-resume-text") || "";
+  interviewJobTextInput.value = localStorage.getItem("deepseek-interview-job-text") || "";
+  interviewExtraInfoInput.value = localStorage.getItem("deepseek-interview-extra-info") || "";
+  renderInterviewReport(localStorage.getItem("deepseek-interview-report") || "");
   loadRiskWindows();
   renderEmpty();
   renderRiskWorkspace();
@@ -188,6 +208,10 @@ bindAutoSave(dbAgentApiKeyInput, "deepseek-db-agent-api-key");
 bindAutoSave(dbAgentModelInput, "deepseek-db-agent-model", "deepseek-chat");
 bindAutoSave(jobScreenApiKeyInput, "deepseek-job-screen-api-key");
 bindAutoSave(jobScreenModelInput, "deepseek-job-screen-model", "deepseek-chat");
+bindAutoSave(interviewModelInput, "deepseek-interview-model", "deepseek-chat");
+bindAutoSave(interviewResumeTextInput, "deepseek-interview-resume-text");
+bindAutoSave(interviewJobTextInput, "deepseek-interview-job-text");
+bindAutoSave(interviewExtraInfoInput, "deepseek-interview-extra-info");
 
 function renderEmpty() {
   if (messages.children.length) return;
@@ -250,6 +274,25 @@ function readAsText(file) {
 function isIndustryTextFile(file) {
   const name = file.name.toLowerCase();
   return file.type.startsWith("text/") || [".txt", ".md", ".json", ".csv"].some((suffix) => name.endsWith(suffix));
+}
+
+function isInterviewTextFile(file) {
+  const name = file.name.toLowerCase();
+  return file.type.startsWith("text/") || [".txt", ".md", ".json", ".csv", ".tsv"].some((suffix) => name.endsWith(suffix));
+}
+
+async function prepareInterviewFiles(input) {
+  const files = [];
+  for (const file of [...input.files]) {
+    const item = { name: file.name, type: file.type || "unknown", size: file.size };
+    if (isInterviewTextFile(file)) {
+      item.text = (await readAsText(file)).slice(0, 80000);
+    } else {
+      item.dataUrl = await readAsDataUrl(file);
+    }
+    files.push(item);
+  }
+  return files;
 }
 
 async function prepareIndustryFiles() {
@@ -343,6 +386,33 @@ function renderIndustryTycResult(data) {
   statFindCompaniesEl.textContent = `企业 ${companies.length}，导入 ${data.importedCompanies || 0}`;
 }
 
+function setInterviewStatus(text, className = "") {
+  interviewStatusEl.textContent = text;
+  interviewStatusEl.className = `status-line ${className}`.trim();
+}
+
+function renderInterviewFileNotes(notes = []) {
+  if (!notes.length) {
+    interviewFileNotesEl.innerHTML = "";
+    return;
+  }
+  interviewFileNotesEl.innerHTML = notes.map((item) => {
+    const label = item.area === "resume" ? "简历" : "岗位";
+    const status = item.status === "text_extracted" ? "已读取" : "未读取";
+    const note = item.note ? `：${item.note}` : "";
+    return `<div>${escapeHtml(label)} ${escapeHtml(item.name)} ${escapeHtml(status)}${escapeHtml(note)}</div>`;
+  }).join("");
+}
+
+function renderInterviewReport(report) {
+  const value = String(report || "").trim();
+  if (!value) {
+    interviewReportResultEl.innerHTML = '<div class="empty">上传简历和目标岗位后，这里会生成正式面试策略报告。</div>';
+    return;
+  }
+  interviewReportResultEl.innerHTML = `<pre class="report-pre">${escapeHtml(value)}</pre>`;
+}
+
 function selectView(view, remember = true) {
   const targetView = view || "findCompanies";
   activeView = document.querySelector(`[data-view-panel="${targetView}"]`) ? targetView : "findCompanies";
@@ -356,6 +426,7 @@ function selectView(view, remember = true) {
   if (activeView === "results") refreshJobResults(false).catch(() => {});
   if (activeView === "browser") promptInput.focus();
   if (activeView === "companyRisk") riskCompanyNameInput.focus();
+  if (activeView === "interviewReport") interviewResumeTextInput.focus();
 }
 
 function addMessage(role, content, className = "") {
@@ -381,6 +452,8 @@ function setBusy(nextBusy) {
   dbInitBtn.disabled = nextBusy;
   companyFileInput.disabled = nextBusy;
   importCompaniesBtn.disabled = nextBusy;
+  findJobsCompanyFileInput.disabled = nextBusy;
+  findJobsImportCompaniesBtn.disabled = nextBusy;
   scanDownloadsBtn.disabled = nextBusy;
   processNextBtn.disabled = nextBusy;
   autoIngestInput.disabled = nextBusy;
@@ -398,6 +471,13 @@ function setBusy(nextBusy) {
   riskAnalyzeBtn.disabled = nextBusy || riskBusy;
   riskAddWindowBtn.disabled = nextBusy || riskBusy;
   riskDeleteWindowBtn.disabled = nextBusy || riskBusy;
+  interviewResumeTextInput.disabled = nextBusy;
+  interviewJobTextInput.disabled = nextBusy;
+  interviewResumeFilesInput.disabled = nextBusy;
+  interviewJobFilesInput.disabled = nextBusy;
+  interviewExtraInfoInput.disabled = nextBusy;
+  interviewAnalyzeBtn.disabled = nextBusy;
+  interviewClearBtn.disabled = nextBusy;
   resetBtn.disabled = false;
   sendBtn.textContent = nextBusy ? "执行中" : "发送";
 }
@@ -430,6 +510,12 @@ async function refreshDbAgentStatus() {
   } catch (error) {
     renderDbAgentStatus({ ok: false, error: error.message || String(error) });
   }
+}
+
+function addLocalDbAgentLog(message) {
+  const time = new Date().toTimeString().slice(0, 8);
+  const current = dbAgentLogEl.innerHTML || "";
+  dbAgentLogEl.innerHTML = `<div>${escapeHtml(time)} ${escapeHtml(message)}</div>${current}`;
 }
 
 function renderJob51AgentStatus(data) {
@@ -1164,14 +1250,28 @@ function readFileAsBase64(file) {
   });
 }
 
-importCompaniesBtn.addEventListener("click", async () => {
-  const file = companyFileInput.files?.[0];
+function setImportStatus(statusEl, message, state = "") {
+  if (!statusEl) return;
+  statusEl.textContent = message;
+  statusEl.className = `status-line ${state}`.trim();
+}
+
+async function importCompanyFile(fileInput, button, defaultText, statusEl = null) {
+  const file = fileInput.files?.[0];
   if (!file) {
+    setImportStatus(statusEl, "请先选择 Excel/CSV 企业名单文件。", "bad");
     addMessage("系统", "请先选择 CSV/Excel 企业名单文件。");
     return;
   }
-  importCompaniesBtn.disabled = true;
-  importCompaniesBtn.textContent = "导入中";
+  if (/\.xls$/i.test(file.name)) {
+    const message = "当前入口支持 .xlsx/.xlsm，不支持老式 .xls。请另存为 .xlsx 后再导入。";
+    setImportStatus(statusEl, message, "bad");
+    addMessage("错误", message);
+    return;
+  }
+  button.disabled = true;
+  button.textContent = "导入中";
+  setImportStatus(statusEl, `正在导入：${file.name}`, "good");
   try {
     const base64 = await readFileAsBase64(file);
     const response = await fetch("/api/import-companies", {
@@ -1181,15 +1281,26 @@ importCompaniesBtn.addEventListener("click", async () => {
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "导入失败");
-    addMessage("系统", `企业导入完成：新增/更新 ${data.imported} 家，跳过 ${data.skipped} 行。示例：${(data.samples || []).join("、")}`);
-    companyFileInput.value = "";
+    const message = `企业导入完成：新增/更新 ${data.imported} 家，跳过 ${data.skipped} 行。示例：${(data.samples || []).join("、") || "无"}`;
+    setImportStatus(statusEl, message, "good");
+    addMessage("系统", message);
+    fileInput.value = "";
     await checkDbStatus(false);
   } catch (error) {
+    setImportStatus(statusEl, error.message || String(error), "bad");
     addMessage("错误", error.message || String(error));
   } finally {
-    importCompaniesBtn.textContent = "导入企业";
-    importCompaniesBtn.disabled = isBusy;
+    button.textContent = defaultText;
+    button.disabled = isBusy;
   }
+}
+
+importCompaniesBtn.addEventListener("click", async () => {
+  await importCompanyFile(companyFileInput, importCompaniesBtn, "导入企业");
+});
+
+findJobsImportCompaniesBtn.addEventListener("click", async () => {
+  await importCompanyFile(findJobsCompanyFileInput, findJobsImportCompaniesBtn, "导入企业名单", findJobsImportStatusEl);
 });
 
 scanDownloadsBtn.addEventListener("click", async () => {
@@ -1219,28 +1330,38 @@ processNextBtn.addEventListener("click", () => {
 
 dbAgentOpenBossBtn.addEventListener("click", async () => {
   dbAgentOpenBossBtn.disabled = true;
+  dbAgentOpenBossBtn.textContent = "打开中";
+  addLocalDbAgentLog("正在打开 GeekRun 登录页...");
   try {
     const response = await fetch("/api/db-agent/open-boss", { method: "POST" });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "打开 BOSS 失败");
-    addMessage("系统", data.message || "已打开 BOSS 页面。");
+    if (!response.ok) throw new Error(data.error || "打开 GeekRun 登录页失败");
+    addLocalDbAgentLog(data.message || "已打开 GeekRun 登录页，请查看弹出的 Chrome 窗口。");
+    addMessage("系统", data.message || "已打开 GeekRun 登录页。");
   } catch (error) {
+    addLocalDbAgentLog(`打开失败：${error.message || String(error)}`);
     addMessage("错误", error.message || String(error));
   } finally {
+    dbAgentOpenBossBtn.textContent = "打开 GeekRun 登录页";
     dbAgentOpenBossBtn.disabled = false;
   }
 });
 
 dbAgentCloseGeekrunBtn.addEventListener("click", async () => {
   dbAgentCloseGeekrunBtn.disabled = true;
+  dbAgentCloseGeekrunBtn.textContent = "关闭中";
+  addLocalDbAgentLog("正在关闭 GeekRun 浏览器...");
   try {
     const response = await fetch("/api/db-agent/close-geekrun", { method: "POST" });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "关闭 GeekRun 失败");
+    addLocalDbAgentLog(data.message || "已关闭 GeekRun 浏览器。");
     addMessage("系统", data.message || "已关闭 GeekRun 浏览器。");
   } catch (error) {
+    addLocalDbAgentLog(`关闭失败：${error.message || String(error)}`);
     addMessage("错误", error.message || String(error));
   } finally {
+    dbAgentCloseGeekrunBtn.textContent = "关闭 GeekRun 浏览器";
     dbAgentCloseGeekrunBtn.disabled = false;
   }
 });
@@ -1397,9 +1518,16 @@ job51AgentStopBtn.addEventListener("click", async () => {
 });
 
 jobScreenStartBtn.addEventListener("click", async () => {
-  const apiKey = jobScreenApiKeyInput.value.trim();
+  const apiKey = jobScreenApiKeyInput.value.trim() || apiKeyInput.value.trim() || dbAgentApiKeyInput.value.trim();
   const model = jobScreenModelInput.value.trim() || "deepseek-chat";
   const instruction = jobScreenInstructionInput.value.trim();
+  if (!apiKey) {
+    addMessage("错误", "请先填写顶部浏览器 API Key，或在筛选岗位里填写 API Key。");
+    return;
+  }
+  if (!jobScreenApiKeyInput.value.trim()) {
+    jobScreenApiKeyInput.value = apiKey;
+  }
   localStorage.setItem("deepseek-job-screen-api-key", apiKey);
   localStorage.setItem("deepseek-job-screen-model", model);
   localStorage.setItem("deepseek-job-screen-batch-size", jobScreenBatchSizeInput.value || "100");
@@ -1469,6 +1597,78 @@ jobScreenResetBtn.addEventListener("click", async () => {
   } finally {
     jobScreenResetBtn.disabled = false;
   }
+});
+
+interviewAnalyzeBtn.addEventListener("click", async () => {
+  const apiKey = apiKeyInput.value.trim() || dbAgentApiKeyInput.value.trim() || jobScreenApiKeyInput.value.trim();
+  const model = interviewModelInput.value.trim() || modelInput.value.trim() || "deepseek-chat";
+  const resumeText = interviewResumeTextInput.value.trim();
+  const jobText = interviewJobTextInput.value.trim();
+  const extraInfo = interviewExtraInfoInput.value.trim();
+  if (!apiKey) {
+    setInterviewStatus("请先填写顶部浏览器 API Key", "bad");
+    return;
+  }
+  if (!resumeText && !interviewResumeFilesInput.files.length) {
+    setInterviewStatus("请粘贴或上传简历", "bad");
+    return;
+  }
+  if (!jobText && !interviewJobFilesInput.files.length) {
+    setInterviewStatus("请粘贴或上传目标岗位", "bad");
+    return;
+  }
+
+  interviewAnalyzeBtn.disabled = true;
+  setInterviewStatus("正在读取文件并生成报告...", "good");
+  renderInterviewFileNotes([]);
+  try {
+    const [resumeFiles, jobFiles] = await Promise.all([
+      prepareInterviewFiles(interviewResumeFilesInput),
+      prepareInterviewFiles(interviewJobFilesInput),
+    ]);
+    const response = await fetch("/api/interview-report/analyze", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        apiKey,
+        model,
+        resumeText,
+        jobText,
+        extraInfo,
+        resumeFiles,
+        jobFiles,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "生成面试报告失败");
+    localStorage.setItem("deepseek-api-key", apiKey);
+    localStorage.setItem("deepseek-interview-model", model);
+    localStorage.setItem("deepseek-interview-report", data.report || "");
+    renderInterviewFileNotes(data.fileNotes || []);
+    renderInterviewReport(data.report || "");
+    setInterviewStatus("面试报告已生成", "good");
+    addMessage("系统", "面试报告已生成。");
+  } catch (error) {
+    setInterviewStatus(error.message || String(error), "bad");
+    addMessage("错误", error.message || String(error));
+  } finally {
+    interviewAnalyzeBtn.disabled = false;
+  }
+});
+
+interviewClearBtn.addEventListener("click", () => {
+  interviewResumeTextInput.value = "";
+  interviewJobTextInput.value = "";
+  interviewExtraInfoInput.value = "";
+  interviewResumeFilesInput.value = "";
+  interviewJobFilesInput.value = "";
+  localStorage.removeItem("deepseek-interview-resume-text");
+  localStorage.removeItem("deepseek-interview-job-text");
+  localStorage.removeItem("deepseek-interview-extra-info");
+  localStorage.removeItem("deepseek-interview-report");
+  renderInterviewFileNotes([]);
+  renderInterviewReport("");
+  setInterviewStatus("已清空，等待上传简历和岗位");
 });
 
 autoIngestInput.addEventListener("change", async () => {

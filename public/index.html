@@ -104,6 +104,13 @@
             <small>天眼查报告求职风险</small>
           </span>
         </button>
+        <button class="flow-card" type="button" data-open-view="interviewReport">
+          <span class="step">8</span>
+          <span>
+            <strong>面试报告</strong>
+            <small>简历 / 岗位通过策略</small>
+          </span>
+        </button>
       </nav>
 
       <section class="view-stack">
@@ -174,6 +181,15 @@
             <button type="button" data-open-view="database">企业名单</button>
           </div>
 
+          <div class="control-panel import-panel">
+            <label>
+              <span>导入 Excel 公司名单</span>
+              <input id="findJobsCompanyFile" type="file" accept=".xlsx,.xlsm,.csv,.tsv,.txt" />
+            </label>
+            <button id="findJobsImportCompaniesBtn" class="primary" type="button">导入企业名单</button>
+            <div id="findJobsImportStatus" class="status-line">支持 Excel/CSV；第一列就是企业名即可，有“企业名称/公司名称”表头也可以。</div>
+          </div>
+
           <div class="subsection-title">BOSS 直聘</div>
           <div class="panel-grid">
             <div class="control-panel wide">
@@ -186,8 +202,8 @@
                 <input id="dbAgentModel" type="text" value="deepseek-chat" />
               </label>
               <label>
-                <span>每次处理企业数</span>
-                <input id="dbAgentMax" type="number" min="1" max="100" value="5" />
+                <span>本次最多处理企业数</span>
+                <input id="dbAgentMax" type="number" min="1" max="100" value="50" />
               </label>
               <label>
                 <span>处理队列</span>
@@ -234,8 +250,8 @@
           <div class="panel-grid">
             <div class="control-panel wide">
               <label>
-                <span>每次处理企业数</span>
-                <input id="job51AgentMax" type="number" min="1" max="100" value="5" />
+                <span>本次最多处理企业数</span>
+                <input id="job51AgentMax" type="number" min="1" max="100" value="50" />
               </label>
               <label>
                 <span>处理队列</span>
@@ -291,8 +307,8 @@
           <div class="panel-grid">
             <div class="control-panel wide">
               <label>
-                <span>筛选 API Key</span>
-                <input id="jobScreenApiKey" type="password" autocomplete="off" placeholder="sk-..." />
+                <span>筛选 API Key（可留空）</span>
+                <input id="jobScreenApiKey" type="password" autocomplete="off" placeholder="留空则使用顶部或找岗位 API Key" />
               </label>
               <label>
                 <span>筛选模型</span>
@@ -454,6 +470,53 @@
           </div>
 
           <div id="riskResult" class="risk-result"></div>
+        </section>
+
+        <section class="view-panel" data-view-panel="interviewReport">
+          <div class="section-head">
+            <div>
+              <h2>8. 面试报告</h2>
+              <p>根据简历和目标岗位生成面试通过策略</p>
+            </div>
+          </div>
+
+          <div class="panel-grid">
+            <div class="control-panel wide">
+              <label>
+                <span>简历文本</span>
+                <textarea id="interviewResumeText" rows="8" placeholder="可粘贴简历正文，也可以上传 PDF/Word/TXT 简历"></textarea>
+              </label>
+              <label>
+                <span>目标岗位信息</span>
+                <textarea id="interviewJobText" rows="8" placeholder="粘贴岗位 JD、招聘要求、岗位职责、任职要求等"></textarea>
+              </label>
+              <label>
+                <span>上传简历</span>
+                <input id="interviewResumeFiles" type="file" multiple accept=".pdf,.doc,.docx,.txt,.md,.json,.csv" />
+              </label>
+              <label>
+                <span>上传目标岗位</span>
+                <input id="interviewJobFiles" type="file" multiple accept=".pdf,.doc,.docx,.txt,.md,.json,.csv" />
+              </label>
+              <label>
+                <span>补充说明</span>
+                <textarea id="interviewExtraInfo" rows="4" placeholder="例如：希望冲刺该岗位、面试在三天后、希望重点优化项目经历等"></textarea>
+              </label>
+            </div>
+
+            <div class="control-panel">
+              <label>
+                <span>报告模型</span>
+                <input id="interviewModel" type="text" value="deepseek-chat" />
+              </label>
+              <button id="interviewAnalyzeBtn" class="primary" type="button">生成面试报告</button>
+              <button id="interviewClearBtn" type="button">清空报告</button>
+              <div id="interviewStatus" class="status-line">等待上传简历和岗位</div>
+              <div id="interviewFileNotes" class="mini-log"></div>
+            </div>
+          </div>
+
+          <div id="interviewReportResult" class="report-result"></div>
         </section>
 
       </section>

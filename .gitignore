@@ -20,5 +20,7 @@ vendor/
 *secret*
 
 .DS_Store
+__pycache__/
+*.pyc
 coverage/
 dist/
